@@ -50,7 +50,10 @@ public:
             float conf_threshold, float iou_threshold );
     cv::Mat& path2pic(const std::string img_path,
                        float conf_threshold, float iou_threshold );  
-    float predict_cv(cv::Mat& img, float conf_thres,float iou_thres  );
+    float predict_cv(cv::Mat& img, float conf_thres, float iou_thres);
+    
+    std::vector<std::vector<int>> predict(cv::Mat img, float conf_thres,float iou_thres);
+
     void help(){
         std::cout << "Usage:\n    auto detector = new TorchScpt::Detector( pt ,"" ,0);\n    detector->predict_cv( img, 0.25, 0.45 );\n";
     }

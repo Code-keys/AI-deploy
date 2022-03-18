@@ -14,7 +14,9 @@
             std::cerr << "CUDA error " << error_code << " at " << __FILE__ << ":" << __LINE__; \
             assert(0);                                                                         \
         }                                                                                      \
-    }
+    } 
+// #endif 
+// #ifndef Tn
 namespace Tn
 {
     template<typename T> 
@@ -32,12 +34,12 @@ namespace Tn
     }
 }
 #endif
- 
+
 namespace Yolo
 {
     static constexpr int CHECK_COUNT = 3;
-    static constexpr float IGNORE_THRESH = 0.1f;
-    static constexpr int MAX_OUTPUT_BBOX_COUNT = 1024;
+    static constexpr float IGNORE_THRESH = 0.001f;
+    static constexpr int MAX_OUTPUT_BBOX_COUNT = 10240;
     static constexpr int CLASS_NUM = 10;
     static constexpr int INPUT_H = 768;
     static constexpr int INPUT_W = 1536;

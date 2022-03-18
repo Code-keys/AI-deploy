@@ -40,7 +40,7 @@
 #endif
 
 
-#define C_SHARP_MAX_OBJECTS 1000
+#define C_SHARP_MAX_OBJECTS 10000
 
 struct bbox_t {
     unsigned int x, y, w, h;       // (x,y) - top-left corner, (w, h) - width & height of bounded box
@@ -124,7 +124,7 @@ public:
         return _obj_names ;  
     };
 
-#ifdef OPENCV
+#ifdef OPENCV 
     float predict_cv(cv::Mat& im, float confthresh, float nmsthresh ) 
     { 
         auto start = std::chrono::high_resolution_clock::now(); 
@@ -133,10 +133,26 @@ public:
         this->draw_boxes(im, bbxes);
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        return duration.count() ;
-
+        return duration.count() ; 
+    };
+    std::vector< std::vector<int> > predict(cv::Mat& im, float confthresh, float nmsthresh ) 
+    {
+        auto start = std::chrono::high_resolution_clock::now(); 
+        nms = nmsthresh;
+        std::vector<bbox_t> bbxes = this->detect_mat( im ,confthresh); 
+        std::vector< std::vector<int> > rets;
+        for(auto bbx :bbxes){
+            rets.push_back(
+                { bbx.obj_id, (int)bbx.prob*1000, bbx.x, bbx.y, bbx.w, bbx.h}
+            );
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        printf( "Time Wasted : %.4f \n", (float)duration.count() );
+        return rets; 
     };
 
+    
     void draw_boxes(cv::Mat& mat_img, std::vector<bbox_t>& result_vec  ){
         for (auto& i : result_vec) {
             cv::Scalar color = obj_id_to_color(i.obj_id); 

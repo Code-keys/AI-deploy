@@ -5,7 +5,9 @@
 //https://blog.csdn.net/weixin_42398658/article/details/112602722
 //https://blog.csdn.net/weixin_44936889/article/details/111186818
  
-using namespace TorchScpt;
+// using namespace TorchScpt;
+
+namespace TorchScpt{
 
 Detector::Detector(const std::string& model_path, std::string class_path, int gpuid ) :
     device_(torch::kCPU), GCpuId_(gpuid),class_names( LoadNames(class_path) )
@@ -95,7 +97,7 @@ Detector::Run(const cv::Mat& img, float conf_threshold, float iou_threshold) {
     // result: n * 7
     // batch index(0), top-left x/y (1,2), bottom-right x/y (3,4), score(5), class id(6)
     auto result = PostProcessing(detections, pad_w, pad_h, scale, img.size(), conf_threshold, iou_threshold);
- 
+
     // end = std::chrono::high_resolution_clock::now();
     // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     // It should be known that it takes longer time at first time
@@ -348,4 +350,29 @@ float Detector::predict_cv(cv::Mat& img, float conf_thres,float iou_thres  ){
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
     return duration;
+}
+std::vector<std::vector<int>> Detector::predict(cv::Mat img, float conf_thres,float iou_thres){
+    if(img.empty()) return {};
+    auto start = std::chrono::high_resolution_clock::now(); 
+    // inference  
+    auto result = Run(img, conf_thres, iou_thres); 
+    std::vector<std::vector<int>> rets;
+    if (!result.empty()) {
+        for (const auto& detection : result[0]) {
+            auto box = detection.bbox;
+            float score = detection.score;
+            int class_idx = detection.class_idx;   
+            std::vector<int> temp;
+            temp.push_back( (int)class_idx );
+            temp.push_back( (int)(score*1000) );
+            temp.push_back( box.x ); /* 方形的左上角的x-坐标 */ 
+            temp.push_back( box.y );
+            temp.push_back( box.width ); /* 宽 pix */
+            temp.push_back( box.height );            
+            rets.push_back( temp ); 
+        }
+    }
+    return rets;
+};
+
 }

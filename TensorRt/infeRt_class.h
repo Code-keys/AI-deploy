@@ -132,6 +132,41 @@ public:
         return ret;
     }
     
+    std::vector< std::vector<int> >  predict( cv::Mat& img, float conf_thr, float nms_thr){
+        BBOX_CONF_THRESH = conf_thr, NMS_THRESH = nms_thr;
+        if (img.empty()) return {};
+        auto start = std::chrono::system_clock::now();
+        cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
+        int b=0;
+        for (int i = 0; i < INPUT_H * INPUT_W; i++) {
+            data[b * 3 * INPUT_H * INPUT_W + i] = pr_img.at<cv::Vec3b>(i)[2] / 255.0;
+            data[b * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = pr_img.at<cv::Vec3b>(i)[1] / 255.0;
+            data[b * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = pr_img.at<cv::Vec3b>(i)[0] / 255.0;
+        }
+        doInference(*context, stream, buffers, data, prob, BATCH_SIZE);
+
+        std::vector<std::vector<Yolo::Detection>> batch_res(BATCH_SIZE); 
+        auto& res = batch_res[0];
+        nms(res, &prob[ 0 * OUTPUT_SIZE], NMS_THRESH );
+        std::vector< std::vector<int> > rreett;
+        for (size_t j = 0; j < res.size(); j++) {
+            cv::Rect r = get_rect( img, res[j].bbox );
+            std::vector<int> temp;
+            temp.push_back( (int)res[j].class_id );
+            temp.push_back( (int)(res[j].det_confidence*1000) );
+            temp.push_back( r.x ); /* 方形的左上角的x-坐标 */ 
+            temp.push_back( r.y );
+            temp.push_back( r.width ); /* 宽 pix */
+            temp.push_back( r.height );
+            rreett.push_back( temp ); 
+        } 
+        auto end = std::chrono::system_clock::now();
+        auto ret = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() ; 
+        std::cout <<"time wasted :  "<< ret << "  ms \n" ;
+        return rreett;
+    }
+
+
     static inline cv::Mat preprocess_img(cv::Mat& img, int input_w, int input_h) {
         int w, h, x, y;
         float r_w = input_w / (img.cols*1.0);
