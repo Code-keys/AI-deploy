@@ -1,146 +1,219 @@
-#ifndef DarkNCNNet_H
-#define DarkNCNNet_H 
+#ifndef NCNN_CLASS_hpp
+#define NCNN_CLASS_hpp
+
+
+#include "ncnn/net.h"
 
 #include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp> 
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+#if CV_MAJOR_VERSION >= 3
+#include <opencv2/videoio/videoio.hpp>
+#endif
+
+#include <vector>
+#include <string>
 #include <chrono>
+#include <stdio.h>
 
-#include "ncnn/net.h"  
+namespace YOLONCNN{
 
-namespace yolocv {
-    typedef struct {
-        int width;
-        int height;
-    } YoloSize;
-}
-typedef struct {
-    std::string name;
-    int stride;
-    std::vector<yolocv::YoloSize> anchors;
-} YoloLayerData;
-typedef struct BoxInfo {
-    float x1;
-    float y1;
-    float x2;
-    float y2;
-    float score;
+
+#define NCNN_GPU
+#undef NCNN_GPU
+
+
+
+struct Object
+{
+    cv::Rect_<float> rect;
     int label;
-} BoxInfo;
-inline float fast_exp(float x) {
-    union {
-        uint32_t i;
-        float f;
-    } v{};
-    v.i = (1 << 23) * (1.4426950409 * x + 126.93490512f);
-    return v.f;
-}
-inline float sigmoid(float x) {
-    return 1.0f / (1.0f + fast_exp(-x));
-}
+    float prob;
+};
+
+class Detector {
+
+    static int detect_yolov4(const cv::Mat& bgr, std::vector<Object>& objects, std::vector<int>& target_size, ncnn::Net* yolov4)
+    {
+        int img_w = bgr.cols;
+        int img_h = bgr.rows;
+
+        ncnn::Mat in = ncnn::Mat::from_pixels_resize(bgr.data, ncnn::Mat::PIXEL_BGR2RGB, bgr.cols, bgr.rows, target_size[0], target_size[1] );
+
+        const float mean_vals[3] = {0, 0, 0};
+        const float norm_vals[3] = {1 / 255.f, 1 / 255.f, 1 / 255.f};
+        in.substract_mean_normalize(mean_vals, norm_vals);
+
+        ncnn::Extractor ex = yolov4->create_extractor();
+
+        ex.input("data", in);
+
+        ncnn::Mat out;
+        ex.extract("output", out);
+
+        objects.clear();
+        for (int i = 0; i < out.h; i++)
+        {
+            const float* values = out.row(i);
+
+            Object object;
+            object.label = values[0];
+            object.prob = values[1];
+            object.rect.x = values[2] * img_w;
+            object.rect.y = values[3] * img_h;
+            object.rect.width = values[4] * img_w - object.rect.x;
+            object.rect.height = values[5] * img_h - object.rect.y;
+
+            objects.push_back(object);
+        }
+
+        return 0;
+    };
+
+    static int draw_objects(cv::Mat& image, const std::vector<Object>& objects )
+    {
+        static const char* class_names[] = {"background", "person", "bicycle",
+                                            "car", "motorbike", "aeroplane", "bus", "train", "truck",
+                                            "boat", "traffic light", "fire hydrant", "stop sign",
+                                            "parking meter", "bench", "bird", "cat", "dog", "horse",
+                                            "sheep", "cow", "elephant", "bear", "zebra", "giraffe",
+                                            "backpack", "umbrella", "handbag", "tie", "suitcase",
+                                            "frisbee", "skis", "snowboard", "sports ball", "kite",
+                                            "baseball bat", "baseball glove", "skateboard", "surfboard",
+                                            "tennis racket", "bottle", "wine glass", "cup", "fork",
+                                            "knife", "spoon", "bowl", "banana", "apple", "sandwich",
+                                            "orange", "broccoli", "carrot", "hot dog", "pizza", "donut",
+                                            "cake", "chair", "sofa", "pottedplant", "bed", "diningtable",
+                                            "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard",
+                                            "cell phone", "microwave", "oven", "toaster", "sink",
+                                            "refrigerator", "book", "clock", "vase", "scissors",
+                                            "teddy bear", "hair drier", "toothbrush"
+                                           };
+
+        // cv::Mat image = bgr.clone();
+
+        for (size_t i = 0; i < objects.size(); i++)
+        {
+            const Object& obj = objects[i];
+
+            fprintf(stderr, "%d = %.5f at %.2f %.2f %.2f x %.2f\n", obj.label, obj.prob,
+                    obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
+
+            cv::rectangle(image, obj.rect, cv::Scalar(255, 0, 0));
+
+            // char text[256];
+            // sprintf(text, "%s %.1f%%", class_names[obj.label], obj.prob * 100);
+
+            // int baseLine = 0;
+            // cv::Size label_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+
+            // int x = obj.rect.x;
+            // int y = obj.rect.y - label_size.height - baseLine;
+            // if (y < 0)
+            //     y = 0;
+            // if (x + label_size.width > image.cols)
+            //     x = image.cols - label_size.width;
+
+            // cv::rectangle(image, cv::Rect(cv::Point(x, y), cv::Size(label_size.width, label_size.height + baseLine)),
+            //               cv::Scalar(255, 255, 255), -1);
+
+            // cv::putText(image, text, cv::Point(x, y + label_size.height),
+            //             cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
+        }
+
+        return 0;
+    };
 
 
-class DarkNCNNet {
 public:
-    DarkNCNNet(const char* param, const char* bin, bool useGPU, int ins = 640) :input_size(ins) {
-        hasGPU = 0;//  ncnn::get_gpu_count() > 0;
-        toUseGPU = hasGPU && useGPU;
 
-        Net = new ncnn::Net();
-        // opt 需要在加载前设置
-        Net->opt.use_vulkan_compute = toUseGPU;  // gpu
-        Net->opt.use_fp16_arithmetic = true;  // fp16运算加速
-        Net->load_param(param);
-        Net->load_model(bin);
-    };
+    Detector( std::string _param, std::string _bin, std::vector<int> w_h, int gpu ) :
+        gpu_id(gpu), bin(_bin), param(_param), target_size(w_h) {
+        /* --> Set the params you need for the ncnn inference <-- */
 
-    ~DarkNCNNet() {
-        Net->clear();
-        delete Net;
-    };
+        yolov4 = new ncnn::Net();
 
-    std::vector<BoxInfo> detect(ncnn::Mat in_net, float confshold) {
+        yolov4->opt.num_threads = 1; //You need to compile with libgomp for multi thread support
 
-        std::vector<BoxInfo> result;
-        ncnn::Mat blob; //out tensor
+        if( gpu_id > 0){
 
-        float norm[3] = { 1 / 255.f, 1 / 255.f, 1 / 255.f }, mean[3] = { 0, 0, 0 };
-        in_net.substract_mean_normalize(mean, norm);
+            yolov4->opt.use_vulkan_compute = true; //You need to compile with libvulkan for gpu support
+            // initialize when app starts
+#ifdef NCNN_GPU
+            ncnn::create_gpu_instance();// line1
+            // deinitialize when app exits
+            // get gpu count
+            int gpu_count = ncnn::get_gpu_count();
 
-        auto ex = Net->create_extractor();
-        ex.set_light_mode(true);
-        ex.set_num_threads(4);
-        if (toUseGPU) {  // 消除提示
-            /* ex.set_vulkan_compute(toUseGPU); */
+            // ncnn::VulkanDevice vkdev; // use default gpu
+            ncnn::VulkanDevice vkdev( gpu_id ); // use device -0、1、2-
+
+            net.set_vulkan_device(&vkdev);
+#endif
         }
-        ex.input(0, in_net);
-        ex.extract("output", blob);
-        auto boxes = decode_infer(blob, { (int)in_net.w, (int)in_net.h }, input_size, num_class, confshold);
-        result.insert(result.begin(), boxes.begin(), boxes.end());
-        //    nms(result, nms_threshold); 
+        yolov4->opt.use_winograd_convolution = true;
+        yolov4->opt.use_sgemm_convolution = true;
+        yolov4->opt.use_fp16_packed = true;
+        yolov4->opt.use_fp16_storage = true;
+        yolov4->opt.use_fp16_arithmetic = true;
+        yolov4->opt.use_packing_layout = true;
+        yolov4->opt.use_shader_pack8 = false;
+        yolov4->opt.use_image_storage = false;
 
-        for (int i = 0; i < 1000; i++) {
-            ex.input("data", in_net);
-            ex.extract("output", blob);
+        /* --> End of setting params <-- */
+        int ret = 0;
+
+        ret += yolov4->load_param( param.data() );
+        if (ret != 0)
+        {
+            fprintf(stderr, "Failed to load model or param, error %d", ret);
         }
-        return result;
+
+        ret += yolov4->load_model( bin.data() );
+        if (ret != 0)
+        {
+            fprintf(stderr, "Failed to load model or param, error %d", ret);
+        }
     };
 
-    float detect_cv(cv::Mat& image/* BGR */, float threshold, float nms_threshold) {
+    ~Detector(){
+#ifdef NCNN_GPU
+        ncnn::destroy_gpu_instance();// line3
+#endif
+    delete yolov4;
+    };
 
+
+    float predict_cv(cv::Mat& frame,  float conf=0.25, float iou=0.45)
+    {
+        if (frame.empty())
+        {
+            fprintf(stderr, "Failed to read image \n");
+            return -1.f;
+        }
         auto start = std::chrono::high_resolution_clock::now();
-        ncnn::Mat in_net = ncnn::Mat::from_pixels_resize(
-            (image).data, ncnn::Mat::PIXEL_BGR, image.cols, image.rows, input_size, input_size);
-        std::vector<BoxInfo> Boxes = detect(in_net, nms_threshold);
-        for (auto& box : Boxes)
-            if (box.score > threshold) {
-               // cv::Rectangle(image, (box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1), cv::Scalar(0x27, 0xC1, 0x36), 1);
-            } 
+
+        std::vector<Object> objects;
+
+        detect_yolov4(frame, objects, target_size , yolov4); //Create an extractor and run detection
+        draw_objects(frame, objects );
+
         auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start)  ;
         return duration.count();
     }
 
-    std::vector<std::string> labels{ "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-                                    "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-                                    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-                                    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-                                    "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-                                    "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-                                    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-                                    "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-                                    "hair drier", "toothbrush" };
+
 private:
-    static std::vector<BoxInfo>
-        decode_infer(ncnn::Mat& data, const yolocv::YoloSize& frame_size, int net_size, int num_classes, float confshold = 0.1) {
-        std::vector<BoxInfo> result;
-        for (int i = 0; i < data.h; i++) {
-            BoxInfo box;
-            const float* values = data.row(i);
-            if (values[1] <= confshold) continue;
-            box.label = values[0] - 1;
-            box.score = values[1];
-            box.x1 = values[2] * (float)frame_size.width;
-            box.y1 = values[3] * (float)frame_size.height;
-            box.x2 = values[4] * (float)frame_size.width;
-            box.y2 = values[5] * (float)frame_size.height;
-            result.push_back(box);
-        }
-        return result;
-    };
 
-    //    static void nms(std::vector<BoxInfo>& result,float nms_threshold);
-    ncnn::Net* Net;
-    int input_size;
-    int num_class = 80;
-public:
-    static DarkNCNNet* detector;
-    static bool hasGPU;
-    static bool toUseGPU;
-};
+    ncnn::Net* yolov4;
+    int gpu_id;
+    std::string bin, param;
+    std::vector<int> target_size  /* 416  640 */ ;
+};  // END class
 
-bool DarkNCNNet::hasGPU = true;
-bool DarkNCNNet::toUseGPU = true;
-DarkNCNNet* DarkNCNNet::detector = nullptr;
+} // END namespace
 
-#endif //DarkNCNNet_H
- 
+
+#endif

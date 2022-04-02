@@ -1,0 +1,183 @@
+https://github.com/Tencent/ncnn/wiki/how-to-build#build-for-linux
+
+# Nvidia-Jetson   NCNN
+
+  cd ncnn
+  mkdir -p build
+  cd build
+ cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../toolchains/jetson.toolchain.cmake -DNCNN_VULKAN=ON -DNCNN_BUILD_EXAMPLES=ON ..
+  
+  # cmake -DCMAKE_BUILD_TYPE=Release -DNCNN_VULKAN=ON -DNCNN_BUILD_EXAMPLES=ON ..
+  make -j$(nproc)
+
+  Generally if you have Intel, AMD or Nvidia GPU from last 10 years, Vulkan can be easily used.
+
+# install vulkan
+  https://developer.nvidia.com/embedded/vulkan
+  
+  
+# install protobuf
+  sudo apt install build-essential git cmake libprotobuf-dev protobuf-compiler libvulkan-dev vulkan-utils libopencv-dev
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1、下载protobuf https://github.com/google/protobuf/archive/v3.4.0.zip
+
+2、使用vs2017编译器 Start → Programs → Visual Studio 2017 → Visual Studio Tools → x64 Native Tools Command Prompt for VS 2017
+
+3、编译protobuf
+
+> cd <protobuf-root-dir>
+
+> mkdir build-vs2017
+
+> cd build-vs2017
+
+> cmake -G"NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=%cd%/install -Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_MSVC_STATIC_RUNTIME=OFF ../cmake
+
+> nmake
+
+> nmake install
+
+
+
+
+
+
+-2：编译ncnn
+
+> cd <ncnn-root-dir>
+
+> mkdir -p build-vs2017
+
+> cd build-vs2017
+
+ 
+
+# cmake option NCNN_VULKAN for enabling vulkan
+
+H:/NCNN/protobuf-3.4.0/build_vs19
+
+> cmake -G"NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DProtobuf_INCLUDE_DIR=H:/NCNN/protobuf-3.4.0/build_vs19/install/include  -DProtobuf_LIBRARIES=H:/NCNN/protobuf-3.4.0/build_vs19/install/lib/libprotobuf.lib  -DProtobuf_PROTOC_EXECUTABLE=H:/NCNN/protobuf-3.4.0/build_vs19/install/bin/protoc.exe  -DCMAKE_INSTALL_PREFIX=%cd%/install -DNCNN_VULKAN=ON -DVulkan_INCLUDE_DIR=H:/NCNN/vulkan_GPU/SDK/Include  -DVulkan_LIBRARY=H:/NCNN/vulkan_GPU/SDK/Lib -DOpenCV_DIR=D:/opencv/build ..
+
+official 》cmake -G"NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=%cd%/install -DProtobuf_INCLUDE_DIR=H:/NCNN/protobuf-3.4.0/build_vs19/install/include -DProtobuf_LIBRARIES=H:/NCNN/protobuf-3.4.0/build_vs19/install/lib/libprotobuf.lib -DProtobuf_PROTOC_EXECUTABLE=H:/NCNN/protobuf-3.4.0/build_vs19/install/bin/protoc.exe
+
+-DNCNN_VULKAN=ON -DVulkan_INCLUDE_DIR=H:/NCNN/vulkan_GPU/SDK/Include  -DVulkan_LIBRARY=H:/NCNN/vulkan_GPU/SDK/Lib
+
+-DNCNN_BUILD_EXAMPLES=OFF
+
+
+-DOpenCV_DIR=D:\opencv\build ..
+
+
+or add this to CMakeLists.txt
+ 
+
+set(Protobuf_INCLUDE_DIR  H:/NCNN/protobuf-3.4.0/build_vs19/install/include)
+set(Protobuf_LIBRARIES H:/NCNN/protobuf-3.4.0/build_vs19/install/lib/libprotobuf.lib  )
+set(Protobuf_PROTOC_EXECUTABLE H:/NCNN/protobuf-3.4.0/build_vs19/install/bin/protoc.exe  )
+set( OpenCV_DIR   D:/opencv/build )
+set(Vulkan_INCLUDE_DIR  H:/NCNN/vulkan_GPU/SDK/Include )
+set(Vulkan_LIBRARY  H:/NCNN/vulkan_GPU/SDK/Lib)
+set(CMAKE_INSTALL_PREFIX  ${CMAKE_CURRENT_SOURCE_DIR}/install)
+
+
+
+> nmake
+
+> nmake install
+
+
+-1：此时ncnn与vulkan都编译，可以直接使用.lib、.h、.dll
+
+
+
+
+Vulkan_INCLUDE_DIR  = C:\VulkanSDK\1.1.106.0\Include
+
+Vulkan_LIBRARY  =  C:\VulkanSDK\1.1.106.0\Lib
+
+VULKAN_SDK  =  C:\VulkanSDK\1.1.106.0
+ 
+
+注意根据实际情况修改
+
+ 
+6、更新intel显卡驱动到最新，在 我的电脑-属性-设备管理器-显示适配器  右键intel显卡然后更新 （这一步可能不需要）
+
+7、	安装vulkan_intel驱动，在https://downloadcenter.intel.com/zh-cn/product/80939/- 找到与本机相应的驱动
+
+我的电脑使用的是 https://downloadcenter.intel.com/zh-cn/download/28816/Intel-Graphics-Windows-10-DCH-Drivers?product=80939   igfx_win10_100.6890.exe
+
+	or  安装vulkan_NVIDIA驱动 https://developer.nvidia.com/vulkan-driver
+
+注意：调用vulkan需要 安装vulkan SDK，与显卡对应的vulkan驱动
+
+
+10、使用vs工程调用vulkan，需要配置包含目录、库目录、链接器，分别指向vulkan安装时的Vulkan_INCLUDE_DIR、Vulkan_LIBRARY 、VULKAN_SDK 
+
+
+
+
+12、开启vulkan
+
+// initialize when app starts
+
+ncnn::create_gpu_instance();// line1
+
+ 
+
+// enable vulkan compute feature before loading
+
+ncnn::Net net;
+
+net.opt.use_vulkan_compute = 1;// line2
+
+ 
+
+// deinitialize when app exits
+
+ncnn::destroy_gpu_instance();// line3
+
+ 
+
+13、指定使用某个GPU
+
+// get gpu count
+
+int gpu_count = ncnn::get_gpu_count();
+
+ 
+
+ncnn::VulkanDevice vkdev; // use default gpu
+
+ncnn::VulkanDevice vkdev(0); // use device-0
+
+ncnn::VulkanDevice vkdev(1); // use device-1
+
+ 
+
+// set specified vulkan device before loading param and model
+
+net.set_vulkan_device(&vkdev);
+
+
+
+
+
+
